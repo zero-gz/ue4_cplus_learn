@@ -1,0 +1,33 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "PandaTools",
+	"Description": "A collection of chinese game development tool for UE4",
+	"Category": "Other",
+	"CreatedBy": "YivanLee",
+	"CreatedByURL": "https://zhuanlan.zhihu.com/p/36675543",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"Installed": false,
+	"Modules": [
+    {
+      "Name": "PandaTools",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "PandaToolsEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "PandaToolAssets",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+	]
+}
