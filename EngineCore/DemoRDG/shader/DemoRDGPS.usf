@@ -1,0 +1,21 @@
+#include "Common.ush"
+
+float4 TintColor;
+Texture2D RDGTex;
+SamplerState RDGTexSampler;
+
+void MainVS(
+ in float4 InPosition : ATTRIBUTE0,
+ out float4 OutPosition : SV_POSITION
+ )
+{
+    OutPosition = InPosition;
+}
+
+void MainPS(
+    out float4 OutColor : SV_Target0
+    )
+{
+	float4 tex_color = RDGTex.SampleLevel(RDGTexSampler, float2(0.5, 0.5), 0);
+    OutColor = tex_color*TintColor;
+}
