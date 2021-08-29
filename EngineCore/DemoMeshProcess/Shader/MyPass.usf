@@ -1,0 +1,33 @@
+#include "Common.ush"
+#include "/Engine/Generated/Material.ush"
+#include "/Engine/Generated/VertexFactory.ush"
+ 
+void MainVS(
+    FPositionOnlyVertexFactoryInput Input,
+    out float4 OutPosition : SV_POSITION
+    )
+{
+    ResolvedView = ResolveView();
+    float4 WorldPos = VertexFactoryGetWorldPosition(Input);
+    OutPosition = INVARIANT(mul(WorldPos, ResolvedView.TranslatedWorldToClip));
+}
+ 
+ 
+/*void MainVS(
+    FVertexFactoryInput Input,
+    out float4 OutPosition : SV_POSITION
+    )
+{
+    ResolvedView = ResolveView();
+    FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
+    float4 WorldPosition = VertexFactoryGetWorldPosition(Input, VFIntermediates);
+    float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPosition);
+    OutPosition = mul(RasterizedWorldPosition, ResolvedView.TranslatedWorldToClip);
+}*/
+ 
+void MainPS(
+    out float4 OutColor : SV_Target0
+)
+{
+    OutColor = float4(0, 1, 0, 1);
+}

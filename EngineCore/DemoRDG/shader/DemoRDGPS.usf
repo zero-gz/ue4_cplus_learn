@@ -1,21 +1,35 @@
 #include "Common.ush"
 
+void MainVS(
+ in float4 InPosition : ATTRIBUTE0,
+ in float2 InUV:ATTRIBUTE1,
+ out noperspective float2 OutTexCoord : TEXCOORD0,
+ out float4 OutPosition : SV_POSITION
+ )
+{
+	OutPosition = InPosition;
+	OutTexCoord.xy = InUV;
+}
+
+
 float4 TintColor;
 Texture2D RDGTex;
 SamplerState RDGTexSampler;
 
-void MainVS(
- in float4 InPosition : ATTRIBUTE0,
- out float4 OutPosition : SV_POSITION
- )
+float4 MainPS(noperspective float2 OutTexCoord : TEXCOORD0): SV_Target0
 {
-    OutPosition = InPosition;
+	float4 tex_color = RDGTex.SampleLevel(RDGTexSampler, OutTexCoord, 0);
+	float dis = distance(OutTexCoord.xy, float2(0.5,0.5));
+	return dis<=0.5?TintColor:tex_color;
 }
 
-void MainPS(
-    out float4 OutColor : SV_Target0
-    )
+
+float4 SecondTintColor;
+Texture2D InputTex;
+SamplerState InputTexSampler;
+
+float4 SecondPS(noperspective float2 OutTexCoord : TEXCOORD0):SV_Target0
 {
-	float4 tex_color = RDGTex.SampleLevel(RDGTexSampler, float2(0.5, 0.5), 0);
-    OutColor = tex_color*TintColor;
+	float4 tex_color = InputTex.SampleLevel(InputTexSampler, OutTexCoord, 0);
+	return tex_color;
 }
