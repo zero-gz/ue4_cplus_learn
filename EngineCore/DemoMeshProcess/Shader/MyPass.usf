@@ -1,33 +1,51 @@
 #include "Common.ush"
 #include "/Engine/Generated/Material.ush"
 #include "/Engine/Generated/VertexFactory.ush"
- 
-void MainVS(
-    FPositionOnlyVertexFactoryInput Input,
-    out float4 OutPosition : SV_POSITION
-    )
+
+void Main(
+	FVertexFactoryInput Input,
+	out float4 OutPosition : SV_POSITION
+	)
 {
-    ResolvedView = ResolveView();
-    float4 WorldPos = VertexFactoryGetWorldPosition(Input);
-    OutPosition = INVARIANT(mul(WorldPos, ResolvedView.TranslatedWorldToClip));
+	ResolvedView = ResolveView();
+
+	FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
+	float4 WorldPosition = VertexFactoryGetWorldPosition(Input, VFIntermediates);
+	float4 WorldPositionExcludingWPO = WorldPosition;
+	float3x3 TangentToLocal = VertexFactoryGetTangentToLocal(Input, VFIntermediates);
+
+	FMaterialVertexParameters VertexParameters = GetMaterialVertexParameters(Input, VFIntermediates, WorldPosition.xyz, TangentToLocal);
+	WorldPosition.xyz += GetMaterialWorldPositionOffset(VertexParameters);
+	float3 Normal = VertexFactoryGetWorldNormal(Input, VFIntermediates);
+	float ViewScale = 3.0f * saturate((length(WorldPosition.xyz) - 300.0f) / 300.0f);
+	float ExpandScalar = 0.2f;
+	if (ExpandScalar > 0.0)
+	{
+		WorldPosition.xyz += Normal * VertexParameters.VertexColor.g * (2.0f + ViewScale);
+	}
+	else
+	{
+		float3 Direction = VertexParameters.VertexColor.rgb * 2.0f - 1.0f;
+#if VF_USE_PRIMITIVE_SCENE_DATA
+		uint PrimitiveId = Input.PrimitiveId;
+#else
+		uint PrimitiveId = 0;
+#endif
+
+		Direction = RotateLocalToWorld(Direction, PrimitiveId);
+		WorldPosition.xyz += Direction * (VertexParameters.VertexColor.a * (2.0f + ViewScale));
+		VertexParameters.VertexColor.a = 1.0f;
+	}
+
+	{
+		float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPosition);
+		OutPosition = mul(RasterizedWorldPosition, View.TranslatedWorldToClip);
+	}
 }
- 
- 
-/*void MainVS(
-    FVertexFactoryInput Input,
-    out float4 OutPosition : SV_POSITION
-    )
-{
-    ResolvedView = ResolveView();
-    FVertexFactoryIntermediates VFIntermediates = GetVertexFactoryIntermediates(Input);
-    float4 WorldPosition = VertexFactoryGetWorldPosition(Input, VFIntermediates);
-    float4 RasterizedWorldPosition = VertexFactoryGetRasterizedWorldPosition(Input, VFIntermediates, WorldPosition);
-    OutPosition = mul(RasterizedWorldPosition, ResolvedView.TranslatedWorldToClip);
-}*/
  
 void MainPS(
     out float4 OutColor : SV_Target0
 )
 {
-    OutColor = float4(0, 1, 0, 1);
+    OutColor = float4(1, 0, 0, 1);
 }

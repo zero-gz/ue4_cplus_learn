@@ -29,7 +29,8 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		return IsMobilePlatform(Parameters.Platform) && Parameters.VertexFactoryType->SupportsPositionOnly();
+		//return Parameters.VertexFactoryType->SupportsPositionOnly() && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	void GetShaderBindings(const FScene* Scene, ERHIFeatureLevel::Type FeatureLevel, const FPrimitiveSceneProxy* PrimitiveSceneProxy, const FMaterialRenderProxy& MaterialRenderProxy, const FMaterial& Material, const FMeshPassProcessorRenderState& DrawRenderState, const FMeshMaterialShaderElementData& ShaderElementData, FMeshDrawSingleShaderBindings& ShaderBindings)
@@ -53,7 +54,8 @@ public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
-		return IsMobilePlatform(Parameters.Platform) && Parameters.VertexFactoryType->SupportsPositionOnly();
+		//return Parameters.VertexFactoryType->SupportsPositionOnly() && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 	void GetShaderBindings(const FScene* Scene, ERHIFeatureLevel::Type FeatureLevel, const FPrimitiveSceneProxy* PrimitiveSceneProxy, const FMaterialRenderProxy& MaterialRenderProxy, const FMaterial& Material, const FMeshPassProcessorRenderState& DrawRenderState, const FMeshMaterialShaderElementData& ShaderElementData, FMeshDrawSingleShaderBindings& ShaderBindings)
 	{
@@ -61,9 +63,9 @@ public:
 	}
 };
 
-IMPLEMENT_MATERIAL_SHADER_TYPE(, FMyPassVS, TEXT("/Engine/Private/MyPass.usf"), TEXT("MainVS"), SF_Vertex);
+IMPLEMENT_MATERIAL_SHADER_TYPE(, FMyPassVS, TEXT("/Engine/Private/MyPass.usf"), TEXT("Main"), SF_Vertex);
 IMPLEMENT_MATERIAL_SHADER_TYPE(, FMyPassPS, TEXT("/Engine/Private/MyPass.usf"), TEXT("MainPS"), SF_Pixel);
-IMPLEMENT_SHADERPIPELINE_TYPE_VSPS(MobileShaderPipeline, FMyPassVS, FMyPassPS, true);
+IMPLEMENT_SHADERPIPELINE_TYPE_VSPS(MyShaderPipeline, FMyPassVS, FMyPassPS, true);
 
 FMyPassProcessor::FMyPassProcessor(
 	const FScene* Scene,
@@ -137,7 +139,7 @@ void GetMyPassShaders(
 	FShaderPipelineRef& ShaderPipeline
 )
 {
-	ShaderPipeline = UseShaderPipelines(FeatureLevel) ? material.GetShaderPipeline(&MobileShaderPipeline, VertexFactoryType) : FShaderPipelineRef();
+	ShaderPipeline = UseShaderPipelines(FeatureLevel) ? material.GetShaderPipeline(&MyShaderPipeline, VertexFactoryType) : FShaderPipelineRef();
 
 	VertexShader = ShaderPipeline.IsValid() ? ShaderPipeline.GetShader<FMyPassVS>() : material.GetShader<FMyPassVS>(VertexFactoryType);
 	PixleShader = ShaderPipeline.IsValid() ? ShaderPipeline.GetShader<FMyPassPS>() : material.GetShader<FMyPassPS>(VertexFactoryType);
@@ -176,7 +178,19 @@ void FMyPassProcessor::Process(
 
 	const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
 	const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, MaterialResource, OverrideSettings);
-	const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, MaterialResource, OverrideSettings);
+	ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, MaterialResource, OverrideSettings);
+
+	switch (MeshCullMode)
+	{
+	case CM_CCW:
+		MeshCullMode = CM_CW;
+		break;
+	case CM_CW:
+		MeshCullMode = CM_CCW;
+		break;
+	default:
+		break;
+	}
 
 	FMeshMaterialShaderElementData ShaderElementData;
 	ShaderElementData.InitializeMeshMaterialData(ViewIfDynamicMeshCommand, PrimitiveSceneProxy, MeshBatch, StaticMeshId, true);
@@ -194,7 +208,8 @@ void FMyPassProcessor::Process(
 		MeshFillMode,
 		MeshCullMode,
 		SortKey,
-		EMeshPassFeatures::PositionOnly,
+		//EMeshPassFeatures::PositionOnly,
+		EMeshPassFeatures::Default,
 		ShaderElementData
 	);
 
@@ -206,13 +221,13 @@ FMeshPassProcessor* CreateMyPassProcessor(
 	FMeshPassDrawListContext* InDrawListContext
 )
 {
-	FMeshPassProcessorRenderState MyPassState(Scene->UniformBuffers.ViewUniformBuffer, Scene->UniformBuffers.MobileOpaqueBasePassUniformBuffer);
+	FMeshPassProcessorRenderState MyPassState;
 	MyPassState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
 	MyPassState.SetBlendState(TStaticBlendStateWriteMask<CW_RGBA>::GetRHI());
 	MyPassState.SetDepthStencilAccess(Scene->DefaultBasePassDepthStencilAccess);
 	MyPassState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
 
-	const FMobileBasePassMeshProcessor::EFlags Flags = FMobileBasePassMeshProcessor::EFlags::CanUseDepthStencil;
+	const FBasePassMeshProcessor::EFlags Flags = FBasePassMeshProcessor::EFlags::CanUseDepthStencil;
 
 	return new(FMemStack::Get()) FMyPassProcessor(
 		Scene,
@@ -226,18 +241,23 @@ FMeshPassProcessor* CreateMyPassProcessor(
 
 FRegisterPassProcessorCreateFunction RegisterMyPass(
 	&CreateMyPassProcessor,
-	EShadingPath::Mobile,
+	EShadingPath::Deferred,
 	EMeshPass::MyPass,
 	EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView
 );
 
-void FDeferredShadingSceneRenderer::RenderMyMeshProcessPass(FRHICommandListImmediate& RHICmdList)
+void FDeferredShadingSceneRenderer::RenderMyMeshProcessPass(FRDGBuilder& GraphBuilder)
 {
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-	{
-		const FViewInfo& View = Views[ViewIndex];
-
-		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-		View.ParallelMeshDrawCommandPasses[EMeshPass::MyPass].DispatchDraw(nullptr, RHICmdList);
-	}
+	//RenderEditorPrimitives(GraphBuilder, PassParameters, View, DrawRenderState);
+	//if (View.ParallelMeshDrawCommandPasses[EMeshPass::MyPass].HasAnyDraw())
+	//{
+	//	GraphBuilder.AddPass(
+	//		RDG_EVENT_NAME("ToonOutline"),
+	//		PassParameters,
+	//		ERDGPassFlags::Raster,
+	//		[this, &View, PassParameters](FRHICommandList& RHICmdList)
+	//	{
+	//		View.ParallelMeshDrawCommandPasses[EMeshPass::MyPass].DispatchDraw(nullptr, RHICmdList);
+	//	});
+	//}
 }
