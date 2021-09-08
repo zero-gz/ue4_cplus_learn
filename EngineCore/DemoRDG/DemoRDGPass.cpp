@@ -5,12 +5,20 @@
 #include "RenderGraphEvent.h"
 #include "CommonRenderResources.h"
 #include "Containers/DynamicRHIResourceArray.h"
+#include "Shader.h"
 
 #define LOCTEXT_NAMESPACE "RDGTestShader"  
 
 DEFINE_LOG_CATEGORY_STATIC(DemoRDGPassLog, Log, All)
 DECLARE_GPU_STAT_NAMED(DemoRDGPass, TEXT("DemoRDGPass"));
 
+
+BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMyColorUniformStruct, RENDERER_API)
+SHADER_PARAMETER(FVector4, ColorOne)
+SHADER_PARAMETER(FVector4, ColorTwo)
+END_GLOBAL_SHADER_PARAMETER_STRUCT()
+
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMyColorUniformStruct, "FMyColorUniform");
 
 BEGIN_SHADER_PARAMETER_STRUCT(FDemoRDGParameters, )
 SHADER_PARAMETER(FVector4, TintColor)
@@ -136,9 +144,37 @@ public:
 };
 IMPLEMENT_SHADER_TYPE(, FDemoRDGVS, TEXT("/Engine/Private/DemoRDGPS.usf"), TEXT("MainVS"), SF_Vertex)
 
+// update texture function
+bool WriteDataToTexture2D(FRHICommandListImmediate& RHICmdList, FRHITexture2D* tex)
+{
+	uint32 Stride = 0;
+	char* TextureDataPtr = (char*)RHICmdList.LockTexture2D(tex, 0, EResourceLockMode::RLM_WriteOnly, Stride, false);
+
+	for(uint32 Row = 0; Row < tex->GetSizeY(); ++Row)
+	{
+		uint32 * PixelPtr = (uint32*)TextureDataPtr;
+		for(uint32 Col = 0; Col < tex->GetSizeX(); ++Col)
+		{
+			uint8 r = 255;
+			uint8 g = 0;
+			uint8 b = 255;
+			uint8 a = 255;
+
+			*PixelPtr = r|(g<<8) | (b<<16) | (a<<24);
+			PixelPtr++;
+		}
+
+		TextureDataPtr += Stride;
+	}
+
+	RHICmdList.UnlockTexture2D(tex, 0, false);
+	return true;
+}
+
 void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef SceneColorTexture
+	FRDGTextureRef SceneColorTexture,
+	FRDGTextureRef SceneDepthTexture
 )
 {
 	check(IsInRenderingThread());
@@ -157,6 +193,18 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 			TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV
 		);
 		FRDGTexture* InputRT = GraphBuilder.CreateTexture(InputRTDesc, TEXT("InputRT"));
+		// mrt second rt
+		FRDGTexture* OutputRT2 = GraphBuilder.CreateTexture(InputRTDesc, TEXT("OutputRT2"));
+		
+		FPooledRenderTargetDesc DescDepth(FPooledRenderTargetDesc::Create2DDesc(FIntPoint(800, 600), PF_DepthStencil, FClearValueBinding(0.2, 0x2), TexCreate_None, TexCreate_DepthStencilTargetable | TexCreate_ShaderResource | TexCreate_InputAttachmentRead, false));
+		// Desc.NumSamples = 1;
+		// Desc.Flags |= GFastVRamConfig.SceneDepth;
+		// Desc.ArraySize = 1;
+		// Desc.bIsArray = false;
+		//Desc.TargetableFlags |= TexCreate_Memoryless;
+		static TRefCountPtr<IPooledRenderTarget> OutputDepth;
+		GRenderTargetPool.FindFreeElement(GraphBuilder.RHICmdList, DescDepth, OutputDepth, TEXT("OutputDepth"), ERenderTargetTransience::Transient);
+
 
 		for (FViewInfo& View : Views)
 		{
@@ -171,27 +219,42 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
 				OutputRDGRT, ERenderTargetLoadAction::EClear);
 
-			//PassParameters->RenderTargets[0] = FRenderTargetBinding(
-			//	SceneColorTexture, ERenderTargetLoadAction::ELoad);
+			PassParameters->RenderTargets[1] = FRenderTargetBinding(OutputRT2, ERenderTargetLoadAction::EClear);
+
+			FRDGTexture* OutputRDGDepth = RegisterExternalOrPassthroughTexture(&GraphBuilder, OutputDepth);
+			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
+					OutputRDGDepth,
+					//ERenderTargetLoadAction::ELoad, 
+					//ERenderTargetLoadAction::ELoad,
+					ERenderTargetLoadAction::EClear, 
+		ERenderTargetLoadAction::EClear, 
+					FExclusiveDepthStencil::DepthWrite_StencilWrite);
 
 			TShaderMapRef<FDemoRDGPS> PixelShader(View.ShaderMap);
 
 			TShaderMapRef<FDemoRDGVS> VertexShader(View.ShaderMap);
 			ClearUnusedGraphResources(PixelShader, PassParameters);
 
+			// Add Clear RenderTarget Pass, can control LinearColor and view port(for some part).
+			AddClearRenderTargetPass(GraphBuilder, PassParameters->DemoRDG.RDGTex, FLinearColor(1.0, 0.0, 1.0),  FIntRect(0, 0, 400, 300));
+			
 			GraphBuilder.AddPass(
 				RDG_EVENT_NAME("DemoRDGPass Render"),
 				PassParameters,
 				ERDGPassFlags::Raster,
-				[PassParameters, &View, VertexShader, PixelShader](FRHICommandList& RHICmdList)
+				[PassParameters, &View, VertexShader, PixelShader](FRHICommandListImmediate& RHICmdList)
 			{
+					// this is RHI LockTexture for update data
+					//FRHITexture2D* tex_tmp = static_cast<FRHITexture2D*>(PassParameters->DemoRDG.RDGTex->GetRHI());
+					//WriteDataToTexture2D(RHICmdList, tex_tmp);
+					
 				//RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 0.0);
 				RHICmdList.SetViewport(0, 0, 0, 800, 600, 0);
 
 				FGraphicsPipelineStateInitializer GraphicsPSOInit;
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-				GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+				GraphicsPSOInit.BlendState =  TStaticBlendState<CW_BA, BO_Add,BF_SourceAlpha,BF_InverseSourceAlpha,BO_Add,BF_Zero,BF_One>::GetRHI(); //TStaticBlendState<>::GetRHI();
+				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
 				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMyVertexDeclaration.VertexDeclarationRHI;
@@ -201,6 +264,11 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
+
+					FMyColorUniformStruct struct_test;
+					struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
+					struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
+					SetUniformBufferParameterImmediate(RHICmdList, PixelShader.GetPixelShader(), PixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
 
 				//FPixelShaderUtils::DrawFullscreenTriangle(RHICmdList);
 				RHICmdList.SetStreamSource(0, GMyVertexBuffer.VertexBufferRHI, 0);
@@ -250,6 +318,11 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				SetShaderParameters(RHICmdList, SecPixelShader, SecPixelShader.GetPixelShader(), *SecPassParameters);
+
+					FMyColorUniformStruct struct_test;
+				struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
+				struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
+				SetUniformBufferParameterImmediate(RHICmdList, SecPixelShader.GetPixelShader(), SecPixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
 
 				//FPixelShaderUtils::DrawFullscreenTriangle(RHICmdList);
 				RHICmdList.SetStreamSource(0, GMyVertexBuffer.VertexBufferRHI, 0);

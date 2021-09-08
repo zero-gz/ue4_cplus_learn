@@ -1,4 +1,5 @@
 #include "Common.ush"
+#include "/Engine/Generated/GeneratedUniformBuffers.ush"
 
 void MainVS(
  in float4 InPosition : ATTRIBUTE0,
@@ -16,11 +17,13 @@ float4 TintColor;
 Texture2D RDGTex;
 SamplerState RDGTexSampler;
 
-float4 MainPS(noperspective float2 OutTexCoord : TEXCOORD0): SV_Target0
+void MainPS(noperspective float2 OutTexCoord : TEXCOORD0, out float4 Out0:SV_Target0,out float4 Out1:SV_Target1)
 {
 	float4 tex_color = RDGTex.SampleLevel(RDGTexSampler, OutTexCoord, 0);
 	float dis = distance(OutTexCoord.xy, float2(0.5,0.5));
-	return dis<=0.5?TintColor:tex_color;
+	//Out0 = dis<=0.5?FMyColorUniform.ColorOne:tex_color;
+	Out0 = dis<=0.5?TintColor:tex_color;
+	Out1 = float4(dis, dis, dis, 1.0f);
 }
 
 
