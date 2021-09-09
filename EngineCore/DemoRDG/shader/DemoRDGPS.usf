@@ -21,9 +21,9 @@ void MainPS(noperspective float2 OutTexCoord : TEXCOORD0, out float4 Out0:SV_Tar
 {
 	float4 tex_color = RDGTex.SampleLevel(RDGTexSampler, OutTexCoord, 0);
 	float dis = distance(OutTexCoord.xy, float2(0.5,0.5));
-	//Out0 = dis<=0.5?FMyColorUniform.ColorOne:tex_color;
-	Out0 = dis<=0.5?TintColor:tex_color;
-	Out1 = float4(dis, dis, dis, 1.0f);
+	Out0 = FMyColorUniform.ColorOne; //dis<=0.5?FMyColorUniform.ColorOne:tex_color;
+	//Out0 = dis<=0.5?TintColor:tex_color;
+	Out1 = tex_color; //float4(dis, dis, dis, 1.0f);
 }
 
 

@@ -33,8 +33,21 @@ class FDemoRDGPS : public FGlobalShader
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_INCLUDE(FDemoRDGParameters, DemoRDG)
+		//SHADER_PARAMETER_STRUCT_REF(FMyColorUniformStruct, FMyColorUniform)
+		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FMyColorUniformStruct, FMyColorUniform)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
+
+	// void SetUniformBuffers(FRHICommandList& CommandList)
+	// {
+	// 	FMyColorUniformStruct struct_test;
+	// 	struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
+	// 	struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
+	// 	//SetUniformBufferParameterImmediate(CommandList, PixelShader.GetPixelShader(), PixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
+	//
+	// 	TUniformBufferRef<FMyColorUniformStruct> Data = TUniformBufferRef<FMyColorUniformStruct>::CreateUniformBufferImmediate(struct_test, UniformBuffer_SingleFrame);
+	// 	SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<FMyColorUniformStruct>(), Data);
+	// }
 };
 
 IMPLEMENT_SHADER_TYPE(, FDemoRDGPS, TEXT("/Engine/Private/DemoRDGPS.usf"), TEXT("MainPS"), SF_Pixel)
@@ -215,6 +228,15 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 
 			FDemoRDGPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FDemoRDGPS::FParameters>();
 			PassParameters->DemoRDG = RDGParam;
+
+			FMyColorUniformStruct* struct_test = GraphBuilder.AllocParameters<FMyColorUniformStruct>();
+			struct_test->ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
+			struct_test->ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
+			PassParameters->FMyColorUniform = GraphBuilder.CreateUniformBuffer(struct_test);
+
+			//感觉这种是比较落后的做法才对哇
+			//PassParameters->FMyColorUniform = TUniformBufferRef<FMyColorUniformStruct>::CreateUniformBufferImmediate(*struct_test, UniformBuffer_SingleFrame);
+			
 			FRDGTexture* OutputRDGRT = RegisterExternalOrPassthroughTexture(&GraphBuilder, OutputRT);
 			PassParameters->RenderTargets[0] = FRenderTargetBinding(
 				OutputRDGRT, ERenderTargetLoadAction::EClear);
@@ -253,7 +275,7 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 
 				FGraphicsPipelineStateInitializer GraphicsPSOInit;
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-				GraphicsPSOInit.BlendState =  TStaticBlendState<CW_BA, BO_Add,BF_SourceAlpha,BF_InverseSourceAlpha,BO_Add,BF_Zero,BF_One>::GetRHI(); //TStaticBlendState<>::GetRHI();
+				GraphicsPSOInit.BlendState =  TStaticBlendState<CW_RGBA, BO_Add,BF_SourceAlpha,BF_InverseSourceAlpha,BO_Add,BF_Zero,BF_One>::GetRHI(); //TStaticBlendState<>::GetRHI();
 				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
 				GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
@@ -261,14 +283,18 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
 
-					FMyColorUniformStruct struct_test;
-					struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
-					struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
-					SetUniformBufferParameterImmediate(RHICmdList, PixelShader.GetPixelShader(), PixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
+					// if(PixelShader->GetUniformBufferParameter<FMyColorUniformStruct>().IsBound())
+					// {
+					// 	FMyColorUniformStruct struct_test;
+					// 	struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
+					// 	struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
+					// 	SetUniformBufferParameterImmediate(RHICmdList, PixelShader.GetPixelShader(), PixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
+					// }
 
 				//FPixelShaderUtils::DrawFullscreenTriangle(RHICmdList);
 				RHICmdList.SetStreamSource(0, GMyVertexBuffer.VertexBufferRHI, 0);
@@ -319,10 +345,10 @@ void FDeferredShadingSceneRenderer::RenderDemoRDGPass(
 
 				SetShaderParameters(RHICmdList, SecPixelShader, SecPixelShader.GetPixelShader(), *SecPassParameters);
 
-					FMyColorUniformStruct struct_test;
-				struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
-				struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
-				SetUniformBufferParameterImmediate(RHICmdList, SecPixelShader.GetPixelShader(), SecPixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
+				// 	FMyColorUniformStruct struct_test;
+				// struct_test.ColorOne = FVector4(1.0, 1.0, 0.0, 1.0);
+				// struct_test.ColorTwo = FVector4(0.0, 1.0, 0.0, 1.0);
+				// SetUniformBufferParameterImmediate(RHICmdList, SecPixelShader.GetPixelShader(), SecPixelShader->GetUniformBufferParameter<FMyColorUniformStruct>(), struct_test);
 
 				//FPixelShaderUtils::DrawFullscreenTriangle(RHICmdList);
 				RHICmdList.SetStreamSource(0, GMyVertexBuffer.VertexBufferRHI, 0);
