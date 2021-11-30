@@ -159,7 +159,8 @@ public:
 };
 IMPLEMENT_SHADER_TYPE(, FDemoRDGVS, TEXT("/Engine/Private/DemoRDGPS.usf"), TEXT("MainVS"), SF_Vertex)
 
-void FDeferredShadingSceneRenderer::RenderDemoRDGPassOther(
+
+void FDeferredShadingSceneRenderer::RenderDemoRDGPassSimple(
 	FRDGBuilder& GraphBuilder,
 	FRDGTextureRef SceneColorTexture,
 	FRDGTextureRef SceneDepthTexture
